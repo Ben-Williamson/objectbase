@@ -1,0 +1,5 @@
+.env
+.env.local
+package-lock.json
+build/
+node_modules/
