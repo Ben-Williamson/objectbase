@@ -23,16 +23,21 @@ class tracked_promise<T>
         }
     }
 
+export type row_content = {
+    id: string | number;
+    [key: string | symbol]: unknown;
+};
+
 export class Table<RowObject extends Row>
     {
     supabase: SupabaseClient;
     table_name: string;
-    rowConstructor: new (table: Table<RowObject>, content: any) => RowObject;
+    rowConstructor: new (table: Table<RowObject>, content: row_content) => RowObject;
 
     constructor(
         supabase: SupabaseClient,
         table_name: string,
-        rowConstructor: new (table: Table<RowObject>, content: any) => RowObject
+        rowConstructor: new (table: Table<RowObject>, content: row_content) => RowObject
     )
         {
         this.supabase = supabase;
@@ -69,7 +74,7 @@ export class Table<RowObject extends Row>
         return [new this.rowConstructor(this, data), null];
         }
 
-    async new(content?: {}): Promise<[RowObject | null, PostgrestError | null]>
+    async new(content?: object): Promise<[RowObject | null, PostgrestError | null]>
         {
         const {data, error} = await this.supabase
             .from(this.table_name)
@@ -86,12 +91,12 @@ export class Table<RowObject extends Row>
 export class Row
     {
     table: Table<any>;
-    content: any;
+    content: row_content;
     private is_locked: boolean;
     private running_promises: tracked_promise<boolean>[];
     private deleted: boolean;
 
-    constructor(table: Table<any>, content: { })
+    constructor(table: Table<any>, content: row_content)
         {
         this.table = table;
         this.content = content;
@@ -123,7 +128,7 @@ export class Row
 
     private lock(promise: Promise<boolean>): void
         {
-        let wrapped_promise = new tracked_promise(promise).finally(() => this.check_all_promises());
+        const wrapped_promise = new tracked_promise(promise).finally(() => this.check_all_promises());
         this.is_locked = true;
         this.running_promises.push(wrapped_promise);
         }
@@ -140,12 +145,10 @@ export class Row
         return !this.is_locked;
         }
 
-    async update_field(field: string | symbol, value: any)
+    async update_field(field: string | symbol, value: unknown)
         {
         async function updater(this_row: Row): Promise<boolean>
             {
-            console.log("updating field", field, value, this_row.deleted);
-
             if(this_row.deleted)
                 return false;
 
@@ -190,7 +193,7 @@ export class Row
 
 export class RowObjectProxy extends Row
     {
-    constructor(table: Table<any>, content: { })
+    constructor(table: Table<any>, content: row_content)
         {
         super(table, content);
 
@@ -207,10 +210,10 @@ export class RowObjectProxy extends Row
             }
             return undefined;
             },
-            set: (target: this, prop: string | symbol, value: any) => {
+            set: (target: this, prop: string | symbol, value: unknown) => {
             if (prop === 'content')
                 {
-                this.content = value;
+                this.content = value as row_content;
                 return true;
                 }
             if (prop in target.content)
