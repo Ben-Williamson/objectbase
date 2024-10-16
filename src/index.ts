@@ -55,6 +55,32 @@ export class Table<RowObject extends Row>
 
         return [data.map((item) => new this.rowConstructor(this, item)), null];
         }
+
+    async select_by_id(id: number): Promise<[RowObject | null, PostgrestError | null]>
+        {
+        const {data, error} = await this.supabase
+            .from(this.table_name)
+            .select("*")
+            .eq('id', id)
+            .single();
+
+        if (error) return [null, error];
+
+        return [new this.rowConstructor(this, data), null];
+        }
+
+    async new(content?: {}): Promise<[RowObject | null, PostgrestError | null]>
+        {
+        const {data, error} = await this.supabase
+            .from(this.table_name)
+            .insert(content)
+            .select()
+            .single();
+
+        if (error) return [null, error];
+
+        return [new this.rowConstructor(this, data), null];
+        }
     }
 
 export class Row
@@ -63,18 +89,23 @@ export class Row
     content: any;
     private is_locked: boolean;
     private running_promises: tracked_promise<boolean>[];
+    private deleted: boolean;
 
-    constructor(table: Table<any>, content: any)
+    constructor(table: Table<any>, content: { })
         {
         this.table = table;
         this.content = content;
 
         this.is_locked = false;
         this.running_promises = [];
+
+        this.deleted = false;
         }
 
     private unlock(): void
         {
+        if (this.deleted)
+            return;
         this.is_locked = false;
         this.running_promises = [];
         }
@@ -113,13 +144,21 @@ export class Row
         {
         async function updater(this_row: Row): Promise<boolean>
             {
+            console.log("updating field", field, value, this_row.deleted);
+
+            if(this_row.deleted)
+                return false;
+
             const { error } = await this_row.table.supabase
                 .from(this_row.table.table_name)
                 .update({[field]: value})
                 .eq('id', this_row.content.id)
 
             if (error)
+                {
+                console.log(error);
                 return false;
+                }
 
             this_row.content[field] = value;
             return true;
@@ -128,11 +167,30 @@ export class Row
         this.lock(updater(this));
         }
 
+    async delete()
+        {
+        async function updater(this_row: Row): Promise<boolean>
+            {
+            console.log("Deleting row");
+            const {error} = await this_row.table.supabase
+                        .from(this_row.table.table_name)
+                        .delete()
+                        .eq('id', this_row.content.id);
+
+            if (error)
+                return false;
+
+            this_row.deleted = true;
+            return true;
+            }
+
+        this.lock(updater(this));
+        }
     }
 
 export class RowObjectProxy extends Row
     {
-    constructor(table: Table<any>, content: any)
+    constructor(table: Table<any>, content: { })
         {
         super(table, content);
 
@@ -155,7 +213,11 @@ export class RowObjectProxy extends Row
                 this.content = value;
                 return true;
                 }
-            target.update_field(prop, value);
+            if (prop in target.content)
+                {
+                target.update_field(prop, value);
+                }
+            (target as any)[prop] = value;
             return true;
             }
         });
