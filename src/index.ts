@@ -1,5 +1,28 @@
 import {PostgrestError, SupabaseClient} from "@supabase/supabase-js";
 
+class tracked_promise<T>
+    {
+    wrapped_promise: Promise<T>;
+    is_settled: boolean;
+
+    constructor(promise: Promise<T>)
+        {
+        this.is_settled = false;
+
+        this.wrapped_promise = promise.finally(
+            () => {
+            this.is_settled = true;
+            }
+        );
+        }
+
+    finally(func: () => void): tracked_promise<T>
+        {
+        this.wrapped_promise.finally(func);
+        return this;
+        }
+    }
+
 export class Table<RowObject extends Row>
     {
     supabase: SupabaseClient;
@@ -39,7 +62,7 @@ export class Row
     table: Table<any>;
     content: any;
     private is_locked: boolean;
-    private running_promises: Promise<boolean>[];
+    private running_promises: tracked_promise<boolean>[];
 
     constructor(table: Table<any>, content: any)
         {
@@ -52,23 +75,32 @@ export class Row
 
     private unlock(): void
         {
-        console.log("unlock called");
         this.is_locked = false;
         this.running_promises = [];
         }
 
+    private check_all_promises(): void
+        {
+        let all_settled = true;
+        this.running_promises.forEach((p) => {
+            all_settled = all_settled && p.is_settled;
+        });
+
+        if(all_settled)
+            this.unlock();
+        }
+
     private lock(promise: Promise<boolean>): void
         {
-        if (!this.is_locked)
-            Promise.all(this.running_promises).finally(() => this.unlock());
+        let wrapped_promise = new tracked_promise(promise).finally(() => this.check_all_promises());
         this.is_locked = true;
-        this.running_promises.push(promise);
+        this.running_promises.push(wrapped_promise);
         }
 
     async sync(): Promise<boolean>
         {
         if (this.running_promises)
-            await Promise.all(this.running_promises);
+            await Promise.all(this.running_promises.map((wp) => wp.wrapped_promise));
         return true;
         }
 
@@ -81,7 +113,6 @@ export class Row
         {
         async function updater(this_row: Row): Promise<boolean>
             {
-            console.log("doing update for", field);
             const { error } = await this_row.table.supabase
                 .from(this_row.table.table_name)
                 .update({[field]: value})

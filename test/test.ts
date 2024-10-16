@@ -45,10 +45,6 @@ async function testit()
 
         console.log(pet.id, pet.name, pet.breed);
 
-        // Looks like we might have occasional issues with
-        // not waiting for the last update.  This is likely
-        // due to how Promise.all().finally() is used under
-        // the hood.
         pet.id = 14;
         pet.name = "Pip";
         pet.breed = "Russian Dwarf";
@@ -57,7 +53,6 @@ async function testit()
 
         console.log(pet.id, pet.name, pet.breed);
         }
-
     }
 
 testit();
