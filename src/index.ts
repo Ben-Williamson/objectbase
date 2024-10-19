@@ -74,6 +74,38 @@ export class Table<RowObject extends Row>
         return [new this.rowConstructor(this, data), null];
         }
 
+    async select_by_field(field: string, value: unknown, single=false): Promise<[RowObject | null, PostgrestError | null]>
+        {
+        let data, error;
+
+        if (single)
+            {
+            const {data: single_data, error: single_error} = await this.supabase
+                .from(this.table_name)
+                .select("*")
+                .eq(field, value)
+                .single();
+            data = single_data;
+            error = single_error;
+            }
+        else
+            {
+            const {data: array_data, error: array_error} = await this.supabase
+                .from(this.table_name)
+                .select("*")
+                .eq(field, value);
+            data = array_data;
+            error = array_error;
+            }
+
+        if (error) return [null, error];
+
+        if (single)
+            return [new this.rowConstructor(this, data), null];
+        else
+            return [data.map((item: row_content) => new this.rowConstructor(this, item)), null]
+        }
+
     async new(content?: object): Promise<[RowObject | null, PostgrestError | null]>
         {
         const {data, error} = await this.supabase

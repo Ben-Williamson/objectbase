@@ -1,6 +1,6 @@
 .env
 .env.local
 package-lock.json
-build/
+dist/
 node_modules/
 .idea/
